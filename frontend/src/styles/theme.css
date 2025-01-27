@@ -1,0 +1,25 @@
+@layer base {
+  :root {
+    /* Design System Variables */
+    --ds-gray-100-value: 0, 0%, 95%;
+    --ds-gray-200-value: 0, 0%, 92%;
+    /* ... rest of your design system variables */
+
+    /* Override Shadcn Variables */
+    --background: var(--ds-background-100);
+    --foreground: hsl(var(--ds-gray-1000-value));
+    --card: var(--ds-background-100);
+    --card-foreground: hsl(var(--ds-gray-1000-value));
+    --popover: var(--ds-background-100);
+    --popover-foreground: hsl(var(--ds-gray-1000-value));
+    --primary: hsl(var(--ds-blue-700-value));
+    --primary-foreground: var(--ds-background-100);
+    /* ... other shadcn overrides */
+  }
+
+  .dark {
+    --background: hsl(var(--ds-gray-1000-value));
+    --foreground: var(--ds-background-100);
+    /* ... dark mode overrides */
+  }
+}

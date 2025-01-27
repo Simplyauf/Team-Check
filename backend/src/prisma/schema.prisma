@@ -1,0 +1,364 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String                @id @default(uuid())
+  email               String                @unique
+  name                String
+  avatar              String?
+  googleId            String?               @unique
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  workspaces          WorkspaceMember[]
+  invitedTo           WorkspaceInvite[]
+  createdInvites      WorkspaceInvite[]     @relation("InvitedBy")
+  UserSession         UserSession[]
+  DailyCheckIn        DailyCheckIn[]
+  leaveRequests       LeaveRequest[]
+  leaveRequestActions LeaveRequestHistory[] @relation("ActionBy")
+  leaveBalances       LeaveBalance[]
+  createdProjects     Project[]
+}
+
+model Workspace {
+  id              String            @id @default(uuid())
+  name            String
+  subdomain       String            @unique
+  settings        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  members         WorkspaceMember[]
+  invites         WorkspaceInvite[]
+  roles           Role[]
+  Team            Team[]
+  CheckInSettings CheckInSettings[]
+  DailyCheckIn    DailyCheckIn[]
+  leaveTypes      LeaveType[]
+  leaveRequests   LeaveRequest[]
+  leaveBalances   LeaveBalance[]
+  projects        Project[]
+}
+
+model WorkspaceMember {
+  id          String       @id @default(uuid())
+  userId      String
+  workspaceId String
+  roleId      String
+  status      String       @default("ACTIVE")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id])
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id])
+  role        Role         @relation(fields: [roleId], references: [id])
+  teams       TeamMember[]
+  leadsTeams  TeamLead[]
+
+  @@unique([userId, workspaceId])
+}
+
+model Role {
+  id          String            @id @default(uuid())
+  name        String
+  type        String // WORKSPACE_OWNER, WORKSPACE_ADMIN, MANAGER, EMPLOYEE, CUSTOM
+  workspaceId String
+  permissions Json // Array of Permission objects
+  precedence  Int               @default(0)
+  parentId    String?
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id])
+  members     WorkspaceMember[]
+  parent      Role?             @relation("RoleHierarchy", fields: [parentId], references: [id])
+  children    Role[]            @relation("RoleHierarchy")
+}
+
+model WorkspaceInvite {
+  id          String    @id @default(uuid())
+  email       String
+  workspaceId String
+  roleId      String
+  position    String // Added field for job title/position
+  token       String    @unique
+  status      String    @default("PENDING")
+  expiresAt   DateTime
+  invitedById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  invitedBy   User      @relation("InvitedBy", fields: [invitedById], references: [id])
+  user        User?     @relation(fields: [email], references: [email])
+}
+
+model Team {
+  id          String    @id @default(uuid())
+  name        String
+  displayName String
+  type        String    @default("UNIT") // "UNIT" or "PROJECT"
+  projectId   String? // Only for project teams
+  status      String    @default("ACTIVE") // For project teams: "ACTIVE", "COMPLETED", "DISBANDED"
+  startDate   DateTime? // For project teams
+  endDate     DateTime? // For project teams
+  description String?
+  workspaceId String
+  parentId    String?
+  metadata    Json? // Store additional custom fields
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id])
+  parent    Team?        @relation("TeamHierarchy", fields: [parentId], references: [id])
+  children  Team[]       @relation("TeamHierarchy")
+  members   TeamMember[]
+  leads     TeamLead[]
+  project   Project?     @relation("ProjectTeam")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  memberId  String // References WorkspaceMember
+  status    String   @default("ACTIVE")
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team   Team            @relation(fields: [teamId], references: [id])
+  member WorkspaceMember @relation(fields: [memberId], references: [id])
+
+  @@unique([teamId, memberId])
+}
+
+model TeamLead {
+  id          String   @id @default(uuid())
+  teamId      String
+  leadId      String
+  title       String
+  type        String // PRIMARY, SECONDARY
+  scope       String   @default("FULL") // "FULL" for unit leads, "PROJECT" for project leads
+  permissions Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team            @relation(fields: [teamId], references: [id])
+  lead WorkspaceMember @relation(fields: [leadId], references: [id])
+
+  @@unique([teamId, leadId])
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model CheckInSettings {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  checkInTime    String // Store as "HH:mm" format
+  checkOutTime   String // Store as "HH:mm" format
+  isEnabled      Boolean  @default(true)
+  defaultPrompts Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id])
+  prompts   CheckInPrompt[]
+}
+
+model CheckInPrompt {
+  id           String   @id @default(uuid())
+  settingsId   String
+  promptType   String // "CHECKIN" or "CHECKOUT"
+  question     String
+  responseType String // "TEXT", "URL", "NUMBER", "PROJECT_SELECT", "VIDEO_URL"
+  isRequired   Boolean  @default(true)
+  order        Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  settings CheckInSettings @relation(fields: [settingsId], references: [id])
+}
+
+model DailyCheckIn {
+  id           String    @id @default(uuid())
+  userId       String
+  workspaceId  String
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  responses    Json // Array of {promptId, question, answer}
+  status       String    @default("PENDING") // "PENDING", "CHECKED_IN", "CHECKED_OUT"
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+// Leave Type Model
+model LeaveType {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  name             String
+  description      String?
+  daysAllowed      Int
+  carryForward     Boolean  @default(false)
+  requiresApproval Boolean  @default(true)
+  minNoticeDays    Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id])
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+// Leave Request Model
+model LeaveRequest {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  leaveTypeId String
+  startDate   DateTime
+  endDate     DateTime
+  duration    Float // For half-day support
+  reason      String
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  comment     String? // Approval/rejection comment
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User                  @relation(fields: [userId], references: [id])
+  workspace Workspace             @relation(fields: [workspaceId], references: [id])
+  leaveType LeaveType             @relation(fields: [leaveTypeId], references: [id])
+  history   LeaveRequestHistory[]
+
+  @@index([workspaceId, userId])
+  @@index([status])
+}
+
+// Leave Request History Model
+model LeaveRequestHistory {
+  id             String   @id @default(uuid())
+  leaveRequestId String
+  status         String
+  comment        String?
+  actionBy       String
+  createdAt      DateTime @default(now())
+
+  leaveRequest LeaveRequest @relation(fields: [leaveRequestId], references: [id])
+  actionByUser User         @relation("ActionBy", fields: [actionBy], references: [id])
+
+  @@index([leaveRequestId])
+}
+
+// Leave Balance Model
+model LeaveBalance {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  userId       String
+  leaveTypeId  String
+  year         Int
+  totalDays    Float
+  usedDays     Float    @default(0)
+  pendingDays  Float    @default(0)
+  carryForward Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([workspaceId, userId, leaveTypeId, year])
+  @@index([workspaceId, userId])
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  workspaceId String
+  teamId      String?  @unique
+  status      String   @default("ACTIVE")
+  progress    Float    @default(0)
+  startDate   DateTime
+  endDate     DateTime
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id])
+  createdBy  User        @relation(fields: [createdById], references: [id])
+  team       Team?       @relation("ProjectTeam", fields: [teamId], references: [id])
+  milestones Milestone[]
+
+  @@index([workspaceId])
+  @@index([status])
+}
+
+model Milestone {
+  id          String   @id @default(uuid())
+  projectId   String
+  title       String
+  description String
+  dueDate     DateTime
+  status      String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED, PAUSED
+  order       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model PerformanceEvaluation {
+  id               String             @id @default(uuid())
+  projectId        String?
+  employeeId       String
+  reviewerId       String
+  type             String
+  score            Float
+  status           String
+  createdAt        DateTime           @default(now())
+  completedAt      DateTime?
+  PerformanceScore PerformanceScore[]
+}
+
+model PerformanceScore {
+  id           String  @id @default(uuid())
+  evaluationId String
+  criteriaId   String
+  score        Float // Score out of 10
+  comment      String?
+
+  evaluation PerformanceEvaluation @relation(fields: [evaluationId], references: [id])
+  criteria   EvaluationCriteria    @relation(fields: [criteriaId], references: [id])
+}
+
+model EvaluationCriteria {
+  id          String  @id @default(uuid())
+  name        String // e.g., "Technical Skills", "Communication"
+  description String
+  weight      Float // Percentage weight in overall score
+  isActive    Boolean @default(true)
+
+  scores PerformanceScore[]
+}
