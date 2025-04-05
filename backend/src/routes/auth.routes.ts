@@ -1,21 +1,23 @@
-const { Router } = require("express");
-const { AuthController } = require("../controllers/auth.controller.ts");
-const { validateRequest } = require("../middlewares/validation.middleware.ts");
-const { loginSchema, registerSchema } = require("../validators/auth.schema.ts");
-const { protect } = require("../middlewares/auth.middleware.ts");
+const express = require("express");
+const { AuthController } = require("../controllers/auth.controller");
+const { protect } = require("../middlewares/auth.middleware");
 
-const router = Router();
+const router = express.Router();
 const authController = new AuthController();
 
+// Public routes
 router.post("/google", authController.googleAuth);
-router.post(
-  "/register",
-  protect,
-  validateRequest(registerSchema),
-  authController.register
-);
-router.post("/refresh-token", authController.refreshToken);
-router.post("/logout", protect, authController.logout);
-router.get("/me", protect, authController.getCurrentUser);
+router.post("/refresh", authController.refreshToken);
+
+// Development only route
+if (process.env.NODE_ENV !== "production") {
+  router.get("/dev/token", authController.generateTestToken);
+}
+
+// Protected routes
+router.use(protect);
+router.post("/register", authController.register);
+router.post("/logout", authController.logout);
+router.get("/me", authController.getCurrentUser);
 
 module.exports = router;

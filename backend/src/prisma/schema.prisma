@@ -50,9 +50,12 @@ model WorkspaceMember {
   userId      String
   workspaceId String
   roleId      String
-  status      String       @default("ACTIVE")
+  status      MemberStatus @default(PENDING)
+  position    String?      // Job title/position (optional)
+  joinedAt    DateTime?    
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  
   user        User         @relation(fields: [userId], references: [id])
   workspace   Workspace    @relation(fields: [workspaceId], references: [id])
   role        Role         @relation(fields: [roleId], references: [id])
@@ -84,16 +87,34 @@ model WorkspaceInvite {
   email       String
   workspaceId String
   roleId      String
-  position    String // Added field for job title/position
+  position    String?   // Job title/position
   token       String    @unique
-  status      String    @default("PENDING")
+  status      InviteStatus @default(PENDING)
   expiresAt   DateTime
   invitedById String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
   invitedBy   User      @relation("InvitedBy", fields: [invitedById], references: [id])
   user        User?     @relation(fields: [email], references: [email])
+
+  @@index([email, workspaceId])
+  @@index([status])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum MemberStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
 
 model Team {

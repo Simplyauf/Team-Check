@@ -1,10 +1,10 @@
 import { RoleHierarchyManager } from "./role.hierarchy";
 import { CustomFieldService } from "./custom.fields";
 import { PermissionResolver } from "./permission.resolver";
+import { RoleType, DEFAULT_PERMISSIONS } from "../types/role";
 
 const { prisma } = require("../lib/prisma.ts");
 const { AppError } = require("../utils/AppError.ts");
-const { RoleType } = require("../types/role.ts");
 const {
   MANAGER_PERMISSIONS,
   MANAGER_DELEGATABLE_PERMISSIONS,
@@ -347,6 +347,50 @@ class RoleService {
       projectPermissions,
       projectTeamId
     );
+  }
+
+  async createDefaultWorkspaceRoles(workspaceId: string) {
+    const defaultRoles = [
+      {
+        name: "Workspace Owner",
+        type: RoleType.WORKSPACE_OWNER,
+        permissions: DEFAULT_PERMISSIONS.WORKSPACE_OWNER,
+        precedence: 100,
+      },
+      {
+        name: "Workspace Admin",
+        type: RoleType.WORKSPACE_ADMIN,
+        permissions: DEFAULT_PERMISSIONS.WORKSPACE_ADMIN,
+        precedence: 80,
+      },
+      {
+        name: "Manager",
+        type: RoleType.MANAGER,
+        permissions: DEFAULT_PERMISSIONS.MANAGER,
+        precedence: 60,
+      },
+      {
+        name: "Team Lead",
+        type: RoleType.TEAM_LEAD,
+        permissions: DEFAULT_PERMISSIONS.TEAM_LEAD,
+        precedence: 40,
+      },
+      {
+        name: "Member",
+        type: RoleType.MEMBER,
+        permissions: DEFAULT_PERMISSIONS.MEMBER,
+        precedence: 20,
+      },
+    ];
+
+    for (const roleData of defaultRoles) {
+      await prisma.role.create({
+        data: {
+          ...roleData,
+          workspaceId,
+        },
+      });
+    }
   }
 }
 

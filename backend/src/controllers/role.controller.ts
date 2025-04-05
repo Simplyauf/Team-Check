@@ -1,7 +1,15 @@
-import { RoleType } from "types/role";
+import { RoleType } from "../types/role";
+import { Request, Response, NextFunction } from "express";
+import { prisma } from "../lib/prisma";
 
 const { RoleService } = require("../services/role.service");
 const { AppError } = require("../utils/AppError");
+
+interface RequestWithWorkspace extends Request {
+  workspace: {
+    id: string;
+  };
+}
 
 class RoleController {
   roleService;
@@ -97,6 +105,40 @@ class RoleController {
       );
 
       return res.status(200).json({ role: updatedRole });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getWorkspaceRoles = async (
+    req: RequestWithWorkspace,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const workspaceId = req.workspace.id;
+
+      const roles = await prisma.role.findMany({
+        where: {
+          workspaceId,
+        },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          permissions: true,
+          precedence: true,
+          metadata: true,
+        },
+        orderBy: {
+          precedence: "desc", // Higher precedence roles first
+        },
+      });
+
+      return res.status(200).json({
+        status: "success",
+        data: roles,
+      });
     } catch (error) {
       next(error);
     }

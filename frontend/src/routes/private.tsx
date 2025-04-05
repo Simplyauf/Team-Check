@@ -224,4 +224,8 @@ export const privateRoutes = [
       </Sidebar>
     ),
   },
+  {
+    path: "settings/workspace/general",
+    element: <WorkspaceGeneralSettings />,
+  },
 ];

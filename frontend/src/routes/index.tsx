@@ -1,48 +1,43 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { publicRoutes } from "./public";
 import { privateRoutes } from "./private";
 import { PrivateRoute } from "@/components/auth/PrivateRoute";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { useNavigate } from "react-router-dom";
-import { useEffect } from "react";
 import WorkspaceSetup from "@/pages/WorkspaceSetup";
 import { WorkspaceSelect } from "@/components/WorkspaceSelect";
-
-interface WorkspaceRouteProps {
-  children: React.ReactNode;
-}
-
-// Workspace middleware component
-const WorkspaceRoute = ({ children }: WorkspaceRouteProps) => {
-  const { currentWorkspace } = useWorkspace();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!currentWorkspace) {
-      navigate("/workspace-select");
-    }
-  }, [currentWorkspace, navigate]);
-
-  return <>{children}</>;
-};
+import InviteAccept from "@/pages/invite/accept/[token]";
 
 export const router = createBrowserRouter([
+  // Public routes (login, register, etc.)
   ...publicRoutes,
+
+  // Public invite routes
+  {
+    path: "invite/accept/:token",
+    element: <InviteAccept />,
+  },
+
+  // Protected routes that require authentication
   {
     element: <PrivateRoute />,
     children: [
+      // Workspace setup route - accessible when authenticated
       {
-        path: "/workspace-setup",
+        path: "workspace-setup",
         element: <WorkspaceSetup />,
       },
+      // Workspace selection route
       {
-        path: "/workspace-select",
+        path: "workspace-select",
         element: <WorkspaceSelect />,
       },
-      ...privateRoutes.map((route) => ({
-        ...route,
-        element: <WorkspaceRoute>{route.element}</WorkspaceRoute>,
-      })),
+      // Other private routes
+      ...privateRoutes,
     ],
+  },
+
+  // Catch-all route for 404
+  {
+    path: "*",
+    element: <Navigate to="/login" replace />,
   },
 ]);

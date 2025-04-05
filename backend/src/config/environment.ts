@@ -14,6 +14,7 @@ const envSchema = z.object({
   SMTP_PORT: z.string(),
   SMTP_USER: z.string(),
   SMTP_PASS: z.string(),
+  APP_NAME: z.string(),
 });
 
 const env = envSchema.parse(process.env);

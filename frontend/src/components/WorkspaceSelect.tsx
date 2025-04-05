@@ -9,6 +9,7 @@ export const WorkspaceSelect = () => {
 
   const handleWorkspaceSelect = (workspace: any) => {
     setCurrentWorkspace(workspace);
+    localStorage.setItem("currentWorkspace", JSON.stringify(workspace));
     navigate("/dashboard");
   };
 

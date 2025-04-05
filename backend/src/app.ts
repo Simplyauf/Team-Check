@@ -1,8 +1,8 @@
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const compression = require("compression");
-const cookieParser = require("cookie-parser");
+import express from "express";
+import cors from "cors";
+const morgan = require("morgan");
+const { logger } = require("./utils/logger");
+const { errorHandler } = require("./middlewares/error.middleware");
 const { prisma } = require("./lib/prisma");
 const routes = require("./routes/index");
 const corsOptions = require("./config/cors");
@@ -20,26 +20,10 @@ async function testDbConnection() {
   }
 }
 
-// Middlewares
-// app.use(helmet());
-app.use(
-  cors({
-    origin: true, // Allow all origins temporarily for testing
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-workspace-id",
-      "x-refresh-token",
-    ],
-    exposedHeaders: ["X-New-Access-Token"],
-  })
-);
-
-app.use(compression());
+// Middleware
+app.use(cors());
 app.use(express.json());
-app.use(cookieParser());
+app.use(morgan("dev"));
 
 // Health check
 app.get("/health", (req, res) => {
@@ -56,16 +40,21 @@ app.post("/test-post", (req, res) => {
 });
 
 // Routes
-app.use("/api", routes);
+const authRoutes = require("./routes/auth.routes");
+const workspaceRoutes = require("./routes/workspace.routes");
+const memberRoutes = require("./routes/member.routes");
+const inviteRoutes = require("./routes/invite.routes");
+const roleRoutes = require("./routes/role.routes");
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    status: "error",
-    message: err.message || "Internal server error",
-  });
-});
+// API Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/workspaces", workspaceRoutes);
+app.use("/api/members", memberRoutes);
+app.use("/api/invites", inviteRoutes); // Public invite routes
+app.use("/api/roles", roleRoutes);
+
+// Error handling
+app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
@@ -84,4 +73,4 @@ const startServer = async () => {
 
 startServer();
 
-module.exports = app;
+export default app;

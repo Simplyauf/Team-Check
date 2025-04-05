@@ -16,6 +16,7 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "monaco-editor": "^0.52.0",
+    "morgan": "^1.10.0",
     "nodemailer": "^6.9.16",
     "pg": "^8.13.1",
     "prisma": "^5.21.1",
@@ -45,7 +46,8 @@
   "scripts": {
     "start": "node dist/app.js",
     "dev": "nodemon --exec ts-node src/app.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "generate-token": "ts-node scripts/generate-test-token.ts"
   },
   "prisma": {
     "schema": "src/prisma/schema.prisma"

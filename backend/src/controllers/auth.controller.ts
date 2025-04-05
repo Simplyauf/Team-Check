@@ -52,6 +52,52 @@ class AuthController {
     this.workspaceService = workspaceService;
   }
 
+  // Development only: Generate test token
+  generateTestToken = async (
+    req: RequestWithUser,
+    res: ExpressResponse,
+    next: typeof NextFunction
+  ) => {
+    try {
+      // Only allow in development
+      if (process.env.NODE_ENV === "production") {
+        throw new AppError("Not available in production", 403);
+      }
+
+      // Find the first user in the database
+      const user = await this.authService.prisma.user.findFirst();
+
+      if (!user) {
+        throw new AppError("No test user found", 404);
+      }
+
+      // Create a session with 30-day validity
+      const tokens = await this.authService.createSession(
+        user,
+        null,
+        30 * 24 * 60 * 60
+      ); // 30 days in seconds
+
+      const cookieOptions = {
+        httpOnly: true,
+        secure: false, // Set to false for development
+        sameSite: "lax" as const,
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
+      };
+
+      res.cookie("refreshToken", tokens.refreshToken, cookieOptions);
+
+      return res.status(200).json({
+        message: "Test token generated",
+        user,
+        accessToken: tokens.accessToken,
+        expiresIn: "30 days",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   googleAuth = async (
     req: RequestWithUser & { body: GoogleAuthRequest },
     res: ExpressResponse,

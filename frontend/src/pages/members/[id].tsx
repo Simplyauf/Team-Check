@@ -1,169 +1,412 @@
-import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import api from "@/lib/api";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, UserCircle, ArrowLeft } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Member {
-  id: number;
+  id: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  };
+  role: {
+    id: string;
+    name: string;
+    type: string;
+    permissions: string[];
+    precedence: number;
+  };
+  position?: string;
+  status: "PENDING" | "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  teams: {
+    team: {
+      id: string;
+      name: string;
+    };
+  }[];
+}
+
+interface Role {
+  id: string;
   name: string;
-  email: string;
-  role: string;
-  position: string;
-  status: string;
+  type: string;
+  permissions: string[];
+  precedence: number;
 }
 
 export default function MemberDetails() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { currentWorkspace } = useWorkspace();
   const [member, setMember] = useState<Member | null>(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editedMember, setEditedMember] = useState<Member | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updateLoading, setUpdateLoading] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editData, setEditData] = useState({
+    position: "",
+    roleId: "",
+  });
 
-  // Fetch member details from backend (Placeholder)
   useEffect(() => {
-    // Replace with actual API call
-    const fetchMember = async () => {
-      // Example data
-      const data: Member = {
-        id: parseInt(id || "0"),
-        name: "John Doe",
-        email: "john@example.com",
-        role: "Manager",
-        position: "Engineering Lead",
-        status: "Active",
-      };
-      setMember(data);
-      setEditedMember(data);
-    };
-
-    if (id) {
-      fetchMember();
+    if (currentWorkspace?.data?.workspace?.id) {
+      fetchMemberDetails();
+      fetchRoles();
     }
-  }, [id]);
+  }, [currentWorkspace, id]);
 
-  const handleSave = () => {
-    // Implement save logic here
-    console.log("Saved member:", editedMember);
-    setMember(editedMember);
-    setEditMode(false);
-    // Optionally, update backend
+  const fetchMemberDetails = async () => {
+    try {
+      const response = await api.get(`/members/${id}`, {
+        headers: { "X-Workspace-Id": currentWorkspace?.data?.workspace?.id },
+      });
+      setMember(response.data.data);
+      setEditData({
+        position: response.data.data.position || "",
+        roleId: response.data.data.role.id,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description:
+          error.response?.data?.message || "Failed to fetch member details",
+        variant: "destructive",
+      });
+      navigate("/members");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (!member) {
-    return <div className="p-4">Loading...</div>;
+  const fetchRoles = async () => {
+    try {
+      const response = await api.get(
+        `/workspaces/${currentWorkspace?.data?.workspace?.id}/roles`,
+        {
+          headers: { "X-Workspace-Id": currentWorkspace?.data?.workspace?.id },
+        }
+      );
+      setRoles(response.data.data);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to fetch roles",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateMember = async () => {
+    try {
+      setUpdateLoading(true);
+      await api.patch(`/members/${id}`, editData, {
+        headers: { "X-Workspace-Id": currentWorkspace?.data?.workspace?.id },
+      });
+
+      toast({
+        title: "Success",
+        description: "Member updated successfully",
+      });
+
+      fetchMemberDetails();
+      setEditDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to update member",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    try {
+      setUpdateLoading(true);
+      await api.patch(
+        `/members/${id}/status`,
+        { status: newStatus },
+        {
+          headers: { "X-Workspace-Id": currentWorkspace?.data?.workspace?.id },
+        }
+      );
+
+      toast({
+        title: "Success",
+        description: "Member status updated successfully",
+      });
+
+      fetchMemberDetails();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description:
+          error.response?.data?.message || "Failed to update member status",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
   }
 
+  if (!member) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Member not found</p>
+      </div>
+    );
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "ACTIVE":
+        return "bg-green-500";
+      case "PENDING":
+        return "bg-yellow-500";
+      case "INACTIVE":
+        return "bg-gray-500";
+      case "SUSPENDED":
+        return "bg-red-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
   return (
-    <div className="p-4">
-      {/* Back Button */}
-      <Button variant="outline" onClick={() => navigate(-1)}>
-        Back to Members
-      </Button>
-
-      {/* Member Information */}
-      <div className="p-6 mt-4 bg-white rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold">{member.name}</h2>
-        <p className="text-md text-muted-foreground">{member.position}</p>
-        <p className="mt-2">Email: {member.email}</p>
-        <p>Role: {member.role}</p>
-        <p>
-          Status:{" "}
-          <Badge variant={member.status === "Active" ? "default" : "secondary"}>
-            {member.status}
-          </Badge>
-        </p>
-
-        {/* Edit Button */}
-        <Button className="mt-4" onClick={() => setEditMode(true)}>
-          Edit Member
-        </Button>
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate("/members")}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Back to Members</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <h1 className="text-2xl font-bold">Member Details</h1>
+        </div>
       </div>
 
-      {/* Edit Member Dialog */}
-      {editedMember && (
-        <Dialog open={editMode} onOpenChange={setEditMode}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Member</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <label className="block">
-                <span className="text-sm">Name</span>
-                <input
-                  type="text"
-                  value={editedMember.name}
-                  onChange={(e) =>
-                    setEditedMember({ ...editedMember, name: e.target.value })
-                  }
-                  className="block mt-1 w-full rounded-md border-gray-300 shadow-sm"
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Profile Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-center">
+              {member.user.avatar ? (
+                <img
+                  src={member.user.avatar}
+                  alt={member.user.name}
+                  className="w-24 h-24 rounded-full"
                 />
-              </label>
-              <label className="block">
-                <span className="text-sm">Email</span>
-                <input
-                  type="email"
-                  value={editedMember.email}
-                  onChange={(e) =>
-                    setEditedMember({ ...editedMember, email: e.target.value })
-                  }
-                  className="block mt-1 w-full rounded-md border-gray-300 shadow-sm"
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm">Role</span>
-                <input
-                  type="text"
-                  value={editedMember.role}
-                  onChange={(e) =>
-                    setEditedMember({ ...editedMember, role: e.target.value })
-                  }
-                  className="block mt-1 w-full rounded-md border-gray-300 shadow-sm"
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm">Position</span>
-                <input
-                  type="text"
-                  value={editedMember.position}
-                  onChange={(e) =>
-                    setEditedMember({
-                      ...editedMember,
-                      position: e.target.value,
-                    })
-                  }
-                  className="block mt-1 w-full rounded-md border-gray-300 shadow-sm"
-                />
-              </label>
-              <label className="flex items-center space-x-2">
-                <span className="text-sm">Status:</span>
-                <select
-                  value={editedMember.status}
-                  onChange={(e) =>
-                    setEditedMember({ ...editedMember, status: e.target.value })
-                  }
-                  className="block mt-1 w-full rounded-md border-gray-300 shadow-sm"
+              ) : (
+                <UserCircle className="w-24 h-24" />
+              )}
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-semibold">{member.user.name}</h3>
+              <p className="text-sm text-gray-500">{member.user.email}</p>
+              <div className="mt-2 flex justify-center">
+                <Badge
+                  className={`${getStatusColor(member.status)} text-white`}
                 >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                  <option value="Pending">Pending</option>
-                </select>
-              </label>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setEditMode(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSave}>Save</Button>
+                  {member.status}
+                </Badge>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+          </CardContent>
+        </Card>
+
+        {/* Role & Position Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Role & Position</CardTitle>
+            <CardDescription>
+              Member's role and position in the workspace
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label>Current Role</Label>
+              <p className="text-lg font-medium">{member.role.name}</p>
+              <p className="text-sm text-gray-500">
+                Type: {member.role.type.replace(/_/g, " ")}
+              </p>
+            </div>
+            <div>
+              <Label>Position</Label>
+              <p className="text-lg font-medium">
+                {member.position || "Not set"}
+              </p>
+            </div>
+            <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full">Edit Details</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit Member Details</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Position</Label>
+                    <Input
+                      value={editData.position}
+                      onChange={(e) =>
+                        setEditData((prev) => ({
+                          ...prev,
+                          position: e.target.value,
+                        }))
+                      }
+                      placeholder="Enter position"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select
+                      value={editData.roleId}
+                      onValueChange={(value) =>
+                        setEditData((prev) => ({ ...prev, roleId: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roles.map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={handleUpdateMember}
+                    disabled={updateLoading}
+                  >
+                    {updateLoading ? "Updating..." : "Save Changes"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </CardContent>
+        </Card>
+
+        {/* Status Management Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Status Management</CardTitle>
+            <CardDescription>
+              Manage member's status in the workspace
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Select
+              value={member.status}
+              onValueChange={handleStatusChange}
+              disabled={updateLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIVE">Active</SelectItem>
+                <SelectItem value="INACTIVE">Inactive</SelectItem>
+                <SelectItem value="SUSPENDED">Suspended</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
+        {/* Teams Card */}
+        <Card className="md:col-span-3">
+          <CardHeader>
+            <CardTitle>Teams</CardTitle>
+            <CardDescription>Teams that this member is part of</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {member.teams.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {member.teams.map(({ team }) => (
+                  <Card key={team.id}>
+                    <CardHeader>
+                      <CardTitle>{team.name}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/teams/${team.id}`)}
+                      >
+                        View Team
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500">Not a member of any teams</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

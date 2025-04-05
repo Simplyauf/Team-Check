@@ -1,97 +1,116 @@
-const jwt = require("jsonwebtoken");
-const { AppError } = require("../utils/AppError.ts");
-const { prisma } = require("../lib/prisma.ts");
-const env = require("../config/environment.ts");
+import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import { AppError } from "../utils/AppError";
+import { PrismaClient } from "@prisma/client";
 
-const protect = async (req, res, next) => {
+const prisma = new PrismaClient();
+
+interface JwtPayload {
+  userId: string;
+  email?: string;
+}
+
+interface RequestWithUser extends Request {
+  user?: any;
+  workspace?: any;
+}
+
+export const protect = async (
+  req: RequestWithUser,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    // Check for access token
-    const accessToken = req.headers.authorization?.split(" ")[1];
-    const refreshToken = req.cookies.refreshToken;
+    // 1) Get token from header
+    const authHeader = req.headers.authorization;
+    let token: string | undefined;
 
-    if (!accessToken && !refreshToken) {
-      throw new AppError("Not authenticated", 401);
+    if (authHeader && authHeader.startsWith("Bearer")) {
+      token = authHeader.split(" ")[1];
     }
 
-    try {
-      // Try to verify access token
-      if (accessToken) {
-        const decoded = jwt.verify(accessToken, env.JWT_SECRET);
-        req.user = decoded;
-        return next();
-      }
-    } catch (error) {
-      // Access token invalid, try refresh token
-      if (!refreshToken) {
-        throw new AppError("Not authenticated", 401);
-      }
+    if (!token) {
+      throw new AppError(
+        "You are not logged in. Please log in to get access.",
+        401
+      );
     }
 
-    // Verify refresh token and issue new access token
-    const session = await prisma.userSession.findFirst({
-      where: {
-        refreshToken,
-        expiresAt: { gt: new Date() },
-      },
+    // 2) Verify token
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your-secret-key"
+    ) as JwtPayload;
+
+    // 3) Check if user still exists
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
       include: {
-        user: true,
+        workspaces: {
+          include: {
+            workspace: true,
+            role: true,
+          },
+        },
       },
     });
 
-    if (!session) {
-      throw new AppError("Invalid refresh token", 401);
+    if (!user) {
+      throw new AppError(
+        "The user belonging to this token no longer exists.",
+        401
+      );
     }
 
-    // Generate new access token
-    const newAccessToken = jwt.sign(
-      {
-        id: session.user.id,
-        email: session.user.email,
-        workspaceId: req.headers["x-workspace-id"],
-      },
-      env.JWT_SECRET,
-      { expiresIn: "15m" }
-    );
-
-    // Set new access token in response
-    res.setHeader("X-New-Access-Token", newAccessToken);
-    req.user = jwt.decode(newAccessToken);
-
+    // 4) Attach user to request
+    req.user = user;
     next();
   } catch (error) {
-    next(new AppError("Not authenticated", 401));
+    if (error instanceof jwt.JsonWebTokenError) {
+      next(new AppError("Invalid token. Please log in again.", 401));
+    } else if (error instanceof jwt.TokenExpiredError) {
+      next(new AppError("Your token has expired. Please log in again.", 401));
+    } else {
+      next(error);
+    }
   }
 };
 
-const requireWorkspace = async (req, res, next) => {
+export const requireWorkspace = async (
+  req: RequestWithUser,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const workspaceId = req.headers["x-workspace-id"];
+    const workspaceId = req.headers["x-workspace-id"] as string;
+
     if (!workspaceId) {
-      throw new AppError("Workspace context required", 400);
+      throw new AppError("Workspace ID is required", 400);
     }
 
-    const membership = await prisma.workspaceMember.findUnique({
+    if (!req.user) {
+      throw new AppError("User not authenticated", 401);
+    }
+
+    // Find the workspace member
+    const workspaceMember = await prisma.workspaceMember.findFirst({
       where: {
-        userId_workspaceId: {
-          userId: req.user.id,
-          workspaceId,
-        },
+        userId: req.user.id,
+        workspaceId,
       },
       include: {
+        workspace: true,
         role: true,
       },
     });
 
-    if (!membership) {
-      throw new AppError("Not a member of this workspace", 403);
+    if (!workspaceMember) {
+      throw new AppError("You don't have access to this workspace", 403);
     }
 
-    req.workspace = { id: workspaceId };
-    req.userRole = membership.role;
+    req.workspace = workspaceMember.workspace;
     next();
   } catch (error) {
     next(error);
   }
 };
-
-module.exports = { protect, requireWorkspace };
